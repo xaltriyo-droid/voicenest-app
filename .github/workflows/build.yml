@@ -1,7 +1,6 @@
 name: Build APK
 on:
   workflow_dispatch:
-  push:
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,10 +21,12 @@ jobs:
           python3 - <<'PY'
           p='android/app/src/main/AndroidManifest.xml'
           s=open(p).read()
-          names=['INTERNET','RECORD_AUDIO','MODIFY_AUDIO_SETTINGS','CHANGE_NETWORK_STATE','BLUETOOTH','BLUETOOTH_CONNECT','WAKE_LOCK']
+          names=['INTERNET','RECORD_AUDIO','MODIFY_AUDIO_SETTINGS','CHANGE_NETWORK_STATE','BLUETOOTH','BLUETOOTH_CONNECT','WAKE_LOCK','FOREGROUND_SERVICE','FOREGROUND_SERVICE_MEDIA_PROJECTION','POST_NOTIFICATIONS']
           perms=''.join('<uses-permission android:name="android.permission.%s"/>'%n for n in names)
           s=s.replace('<application',perms+'<application',1)
           s=s.replace('android:label="voicenest"','android:label="VoiceNest"')
+          svc='<service android:name="de.julianassmann.flutter_background.IsolateHolderService" android:enabled="true" android:exported="false" android:foregroundServiceType="mediaProjection"/>'
+          s=s.replace('</application>',svc+'</application>',1)
           open(p,'w').write(s)
           PY
       - run: flutter pub get
