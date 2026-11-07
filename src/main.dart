@@ -261,7 +261,7 @@ class _RoomState extends State<RoomPage> {
 
   @override
   Widget build(BuildContext c) {
-    final ps = ready ? [lk.localParticipant!, ...lk.remoteParticipants.values] : <Participant>[];
+    final List<Participant> ps = ready ? <Participant>[lk.localParticipant!, ...lk.remoteParticipants.values] : <Participant>[];
     return Scaffold(
       appBar: AppBar(title: Text(widget.room['name']), backgroundColor: Colors.transparent),
       body: Column(children: [
