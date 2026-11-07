@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_background/flutter_background.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper;
 import 'package:livekit_client/livekit_client.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -200,6 +202,7 @@ class _RoomState extends State<RoomPage> {
   EventsListener<RoomEvent>? ev;
   bool ready = false, muted = false;
   String status = 'Connecting…';
+  bool sharing = false;
 
   @override
   void initState() { super.initState(); join(); }
@@ -213,6 +216,10 @@ class _RoomState extends State<RoomPage> {
         ..on<RoomReconnectingEvent>((_) { if (mounted) setState(() => status = 'Reconnecting…'); })
         ..on<RoomReconnectedEvent>((_) { if (mounted) setState(() => status = 'Connected'); })
         ..on<RoomDisconnectedEvent>((_) { if (mounted) setState(() => status = 'Disconnected'); })
+        ..on<TrackSubscribedEvent>((_) => refresh())
+        ..on<TrackUnsubscribedEvent>((_) => refresh())
+        ..on<LocalTrackPublishedEvent>((_) => refresh())
+        ..on<LocalTrackUnpublishedEvent>((_) => refresh())
         ..on<ParticipantConnectedEvent>((_) => refresh())
         ..on<ParticipantDisconnectedEvent>((_) => refresh())
         ..on<ActiveSpeakersChangedEvent>((_) => refresh())
@@ -251,6 +258,46 @@ class _RoomState extends State<RoomPage> {
     msg.clear();
   }
 
+  Future<void> toggleShare() async {
+    final lp = lk.localParticipant!;
+    try {
+      if (!sharing) {
+        final ok = await Helper.requestCapturePermission();
+        if (!ok) { if (mounted) toast(context, 'Screen capture permission was denied'); return; }
+        const cfg = FlutterBackgroundAndroidConfig(
+          notificationTitle: 'VoiceNest',
+          notificationText: 'Sharing your screen',
+          notificationImportance: AndroidNotificationImportance.normal,
+          notificationIcon: AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
+        );
+        await FlutterBackground.initialize(androidConfig: cfg);
+        await FlutterBackground.enableBackgroundExecution();
+        await lp.setScreenShareEnabled(true);
+        sharing = true;
+      } else {
+        await lp.setScreenShareEnabled(false);
+        await FlutterBackground.disableBackgroundExecution();
+        sharing = false;
+      }
+    } catch (e) {
+      sharing = false;
+      if (mounted) toast(context, 'Screen share failed: $e');
+    }
+    if (mounted) setState(() {});
+  }
+
+  Widget stage() {
+    for (final p in lk.remoteParticipants.values) {
+      for (final pub in p.videoTrackPublications) {
+        final t = pub.track;
+        if (pub.source == TrackSource.screenShareVideo && t != null) {
+          return SizedBox(height: 240, width: double.infinity, child: VideoTrackRenderer(t));
+        }
+      }
+    }
+    return const SizedBox.shrink();
+  }
+
   @override
   void dispose() {
     ev?.dispose();
@@ -267,6 +314,7 @@ class _RoomState extends State<RoomPage> {
       body: Column(children: [
         if (status != 'Connected')
           Container(width: double.infinity, color: Colors.orange.shade800, padding: const EdgeInsets.all(6), child: Text(status, textAlign: TextAlign.center)),
+        stage(),
         Padding(
           padding: const EdgeInsets.all(12),
           child: Wrap(
@@ -306,6 +354,11 @@ class _RoomState extends State<RoomPage> {
                   setState(() {});
                 },
                 child: Text(muted ? 'Unmute' : 'Mute'),
+              )),
+              const SizedBox(width: 10),
+              Expanded(child: FilledButton.tonal(
+                onPressed: ready ? toggleShare : null,
+                child: Text(sharing ? 'Stop share' : 'Share screen'),
               )),
               const SizedBox(width: 10),
               Expanded(child: FilledButton(
